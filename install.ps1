@@ -1,6 +1,6 @@
 # Smart Systems - Autopilot registration from OOBE
 
-$GroupTag = "STD-LAPTOP"
+
 
 $ErrorActionPreference = "Stop"
 
@@ -17,10 +17,10 @@ Write-Host "Installing Get-WindowsAutopilotInfo..." -ForegroundColor Cyan
 
 Install-Script -Name Get-WindowsAutopilotInfo -Force
 
-Write-Host "Uploading hardware hash with group tag '$GroupTag'..." -ForegroundColor Cyan
+Write-Host "Uploading hardware hash with group tag..." -ForegroundColor Cyan
 Write-Host "This can take a while. Do not close this window." -ForegroundColor Yellow
 
-Get-WindowsAutopilotInfo -Online -GroupTag $GroupTag -Assign
+Get-WindowsAutopilotInfo -Online -GroupTag "STD-LAPTOP" -Assign
 
 Write-Host ""
 Write-Host "Autopilot profile assignment completed." -ForegroundColor Green
