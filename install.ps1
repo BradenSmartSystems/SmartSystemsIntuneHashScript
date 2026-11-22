@@ -164,9 +164,7 @@ function Add-OnboardingCorporateIdentity {
 function Assert-OnboardingAdminContext {
     $context = Get-MgContext
     if ($context.TenantId -ne $tenantId) { throw 'Connected to the wrong Microsoft tenant.' }
-    if ($context.Account -ieq 'intune.enroll@cosmartsystems.com') {
-        throw 'intune.enroll is the Windows enrollment account, not the script administrator. Rerun and authenticate the script with an authorized Intune administrator; use intune.enroll separately in Windows Settings.'
-    }
+    if (-not $context.Account) { throw 'Use an interactive work-account sign-in for onboarding.' }
 }
 
 function Wait-OnboardingState {
@@ -393,7 +391,7 @@ try {
         throw 'The collector did not return one complete hardware record.'
     }
     Write-Host 'Sign in with your authorized Intune administrator for hardware registration.' -ForegroundColor Cyan
-    Write-Host 'Do not use intune.enroll for this upload: it is not an administrator.'
+    Write-Host 'intune.enroll@cosmartsystems.com now has the Intune Administrator role and can be used for this upload.'
     Connect-MgGraph -TenantId $tenantId -ContextScope Process -UseDeviceCode -NoWelcome -Scopes @(
         'DeviceManagementServiceConfig.ReadWrite.All', 'Device.Read.All', 'GroupMember.Read.All'
     )
