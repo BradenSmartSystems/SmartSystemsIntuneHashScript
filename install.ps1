@@ -10,9 +10,10 @@ function Select-OnboardingRole {
     Write-Host "`nSmart Systems - PC onboarding" -ForegroundColor Cyan
     Write-Host '  1. Employee PC'
     Write-Host '  2. Shared Jump PC (physical PC with TPM 2.0)'
+    Write-Host '  3. Microsoft Teams Room (existing Windows room compute)'
     Write-Host '  0. Cancel'
     while ($true) {
-        switch ((Read-Host 'Select 1, 2 or 0').Trim()) {
+        switch ((Read-Host 'Select 1, 2, 3 or 0').Trim()) {
             '1' { return [pscustomobject]@{
                 Role = 'Employee PC'; Tag = 'STD-LAPTOP'; Usage = 'singleUser'
                 ProfileId = '6799c989-143d-43e4-b1c7-61df6f2c0667'
@@ -23,8 +24,12 @@ function Select-OnboardingRole {
                 ProfileId = '24ebfcdf-3a75-4381-ab5f-4c7f35a101a3'
                 GroupId = 'f5200c53-ec8e-479b-907f-0916e95b9095'
             } }
+            '3' { return [pscustomobject]@{
+                Role = 'Microsoft Teams Room'; Tag = 'TEAMS-ROOM'; Usage = 'teamsRoom'
+                GroupId = '58002872-4f04-4c7e-9482-12d182321af1'
+            } }
             '0' { return $null }
-            default { Write-Host 'Enter 1, 2 or 0. Nothing has been changed.' -ForegroundColor Yellow }
+            default { Write-Host 'Enter 1, 2, 3 or 0.' -ForegroundColor Yellow }
         }
     }
 }
@@ -216,13 +221,22 @@ function Assert-ExistingJoinTenant {
 
 function Get-ExistingRoleMarker {
     param($SelectedRoute, $DirectoryDevice)
-    $marker = if ($SelectedRoute.Usage -eq 'shared') { 'SS-JUMP-PC' } else { 'SS-EMPLOYEE-PC' }
+    $marker = switch ($SelectedRoute.Tag) {
+        'TEAMS-ROOM' { 'SS-TEAMS-ROOM' }
+        'JUMP-PC' { 'SS-JUMP-PC' }
+        'STD-LAPTOP' { 'SS-EMPLOYEE-PC' }
+        default { throw 'Unknown onboarding role.' }
+    }
     $existingMarker = $DirectoryDevice.extensionAttributes.extensionAttribute15
     if ($existingMarker -and $existingMarker -ne $marker) {
         throw 'Device extensionAttribute15 already has another value. Review its existing classification before changing it.'
     }
-    $oppositeTag = if ($SelectedRoute.Usage -eq 'shared') { '[OrderID]:STD-LAPTOP' } else { '[OrderID]:JUMP-PC' }
-    if ($DirectoryDevice.physicalIds -contains $oppositeTag) {
+    $conflicts = @($DirectoryDevice.physicalIds | Where-Object {
+        $_ -ne "[OrderID]:$($SelectedRoute.Tag)" -and
+            ($_ -in @('[OrderID]:JUMP-PC','[OrderID]:STD-LAPTOP','[OrderID]:TEAMS-ROOM') -or
+             ($SelectedRoute.Tag -eq 'TEAMS-ROOM' -and $_ -like '[[]OrderID]:*'))
+    })
+    if ($conflicts.Count) {
         throw 'This PC has a conflicting Autopilot tag. Review its intended role in Intune before changing it.'
     }
     return $marker
@@ -239,7 +253,7 @@ function Enroll-ExistingInstallation {
         if ((Read-Host 'Type READY after testing local administrator and remote recovery access, or Enter to cancel') -cne 'READY') { return }
         Write-Host 'In Settings: Accounts > Access work or school > Connect.' -ForegroundColor Cyan
         Write-Host 'BEFORE entering an email, select Join this device to Microsoft Entra ID under Alternate actions.' -ForegroundColor Yellow
-        if ($SelectedRoute.Usage -eq 'shared') {
+        if ($SelectedRoute.Usage -in @('shared','teamsRoom')) {
             Write-Host 'Join with intune.enroll@cosmartsystems.com (configured as Device Enrollment Manager).'
         } else { Write-Host 'Join with the employee work account, licensed for Intune and included in automatic enrollment.' }
         if ($join.WorkplaceJoined -eq 'YES') {
@@ -262,6 +276,12 @@ function Enroll-ExistingInstallation {
         if (@($records.value).Count -eq 1 -and $records.value[0].trustType -eq 'AzureAd') { $records.value[0] }
     }
     $marker = Get-ExistingRoleMarker $SelectedRoute $directoryDevice
+    if ($SelectedRoute.Usage -eq 'teamsRoom') {
+        # These device groups receive workstation policies, including a Windows sign-in notice.
+        $workstationGroups = @('a862fc3d-3f9f-4202-bd3a-1d09d3c1e9cc','f5200c53-ec8e-479b-907f-0916e95b9095','95bfeb84-ec30-4601-a76e-d0cd75fb003d','0b9b1379-1d59-455f-bcaf-9d220a6f1761')
+        $current = Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/devices/$($directoryDevice.id)/checkMemberGroups" -Body (@{groupIds=$workstationGroups} | ConvertTo-Json) -ContentType 'application/json' -OutputType PSObject
+        if (@($current.value).Count -gt 0) { throw 'This room belongs to a workstation policy group. Review the existing assignment before classifying it as a Teams Room.' }
+    }
     Assert-OnboardingNameAvailable -Name $DesiredName -CurrentDeviceId $join.DeviceId
     # Administrator-controlled device attribute: current-install routing without an OOBE reset.
     $roleBody = @{extensionAttributes = @{extensionAttribute15 = $marker}} | ConvertTo-Json
@@ -292,6 +312,9 @@ function Enroll-ExistingInstallation {
     Invoke-MgGraphRequest -Method PATCH -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$($managed.id)" -Body '{"managedDeviceOwnerType":"company"}' -ContentType 'application/json' | Out-Null
     Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$($managed.id)/syncDevice" | Out-Null
     Set-ExistingOnboardingName -Name $DesiredName
+    if ($SelectedRoute.Usage -eq 'teamsRoom') {
+        Write-Host 'After sync, restart during a maintenance window. Verify the room opens Teams Rooms automatically and completes a test call.'
+    }
     Write-Host "`nVerified: Entra joined, Intune enrolled, and routed as $($SelectedRoute.Role)." -ForegroundColor Green
     Write-Host 'Intune sync requested. Policy and app installation still need to finish.'
     Write-Host 'No reset or restart requested. Test Datto and local administrator access before a normal restart.'
@@ -329,6 +352,12 @@ if (-not ([Security.Principal.WindowsPrincipal]$identity).IsInRole([Security.Pri
 }
 $setup = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\Setup'
 $atOobe = Test-OnboardingOobe $setup
+if ($route.Usage -eq 'teamsRoom') {
+    if ($atOobe) { throw 'Complete the OEM Teams Rooms setup first, then run option 3 from the room Windows administrator desktop.' }
+    if (-not (Get-AppxPackage -AllUsers -Name Microsoft.SkypeRoomSystem)) {
+        throw 'The Microsoft Teams Rooms on Windows app was not found. Run this on the Windows room compute after OEM setup.'
+    }
+}
 if ($atOobe) {
     Write-Host 'Detected Windows OOBE: prepare Autopilot setup.' -ForegroundColor Cyan
 } else {
