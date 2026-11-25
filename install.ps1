@@ -310,13 +310,12 @@ function Enroll-ExistingInstallation {
         if (@($records.value).Count -eq 1 -and $records.value[0].managementState -eq 'managed') { $records.value[0] }
     }
     Invoke-MgGraphRequest -Method PATCH -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$($managed.id)" -Body '{"managedDeviceOwnerType":"company"}' -ContentType 'application/json' | Out-Null
-    Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$($managed.id)/syncDevice" | Out-Null
     Set-ExistingOnboardingName -Name $DesiredName
     if ($SelectedRoute.Usage -eq 'teamsRoom') {
         Write-Host 'After sync, restart during a maintenance window. Verify the room opens Teams Rooms automatically and completes a test call.'
     }
     Write-Host "`nVerified: Entra joined, Intune enrolled, and routed as $($SelectedRoute.Role)." -ForegroundColor Green
-    Write-Host 'Intune sync requested. Policy and app installation still need to finish.'
+    Write-Host 'Windows checks in with Intune automatically. Policy and app installation can take time.'
     Write-Host 'No reset or restart requested. Test Datto and local administrator access before a normal restart.'
     Write-Host 'This path does not register the hardware in Autopilot for future resets.'
 }
