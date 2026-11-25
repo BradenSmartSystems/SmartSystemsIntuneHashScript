@@ -352,11 +352,8 @@ if (-not ([Security.Principal.WindowsPrincipal]$identity).IsInRole([Security.Pri
 }
 $setup = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\Setup'
 $atOobe = Test-OnboardingOobe $setup
-if ($route.Usage -eq 'teamsRoom') {
-    if ($atOobe) { throw 'Complete the OEM Teams Rooms setup first, then run option 3 from the room Windows administrator desktop.' }
-    if (-not (Get-AppxPackage -AllUsers -Name Microsoft.SkypeRoomSystem)) {
-        throw 'The Microsoft Teams Rooms on Windows app was not found. Run this on the Windows room compute after OEM setup.'
-    }
+if ($route.Usage -eq 'teamsRoom' -and $atOobe) {
+    throw 'Complete Windows setup first, then run option 3 from the room computer Windows administrator desktop.'
 }
 if ($atOobe) {
     Write-Host 'Detected Windows OOBE: prepare Autopilot setup.' -ForegroundColor Cyan
