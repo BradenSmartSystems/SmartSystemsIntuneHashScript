@@ -371,12 +371,12 @@ try {
     }
     Import-Module Microsoft.Graph.Authentication
     if (-not $atOobe) {
-        Write-Host 'Sign in with an authorized Intune administrator to classify this PC and verify management.' -ForegroundColor Cyan
+        Write-Host 'In the Microsoft sign-in window, choose your authorized Intune administrator to classify this PC and verify management.' -ForegroundColor Cyan
         $existingScopes = @(
             'Directory.AccessAsUser.All', 'DeviceManagementManagedDevices.ReadWrite.All', 'GroupMember.Read.All'
         )
         if ($includeCorporateIdentifier) { $existingScopes += 'DeviceManagementServiceConfig.ReadWrite.All' }
-        Connect-MgGraph -TenantId $tenantId -ContextScope Process -UseDeviceCode -NoWelcome -Scopes $existingScopes
+        Connect-MgGraph -TenantId $tenantId -ContextScope Process -NoWelcome -Scopes $existingScopes
         Assert-OnboardingAdminContext
         if ($includeCorporateIdentifier) { Add-OnboardingCorporateIdentity }
         Enroll-ExistingInstallation -SelectedRoute $route -ExpectedTenant $tenantId -DesiredName $requestedName
@@ -390,9 +390,9 @@ try {
     if ($hardware.Count -ne 1 -or -not $hardware[0].'Hardware Hash' -or -not $hardware[0].'Device Serial Number') {
         throw 'The collector did not return one complete hardware record.'
     }
-    Write-Host 'Sign in with your authorized Intune administrator for hardware registration.' -ForegroundColor Cyan
+    Write-Host 'In the Microsoft sign-in window, choose your authorized Intune administrator for hardware registration.' -ForegroundColor Cyan
     Write-Host 'intune.enroll@cosmartsystems.com now has the Intune Administrator role and can be used for this upload.'
-    Connect-MgGraph -TenantId $tenantId -ContextScope Process -UseDeviceCode -NoWelcome -Scopes @(
+    Connect-MgGraph -TenantId $tenantId -ContextScope Process -NoWelcome -Scopes @(
         'DeviceManagementServiceConfig.ReadWrite.All', 'Device.Read.All', 'GroupMember.Read.All'
     )
     Assert-OnboardingAdminContext
